@@ -3,6 +3,9 @@
 A self-contained Rust application that imports your Google Sheets `.sql` export
 files into a local SQLite database and serves a full GitHub-themed dashboard UI.
 
+<img width="1863" height="964" alt="image" src="https://github.com/user-attachments/assets/75b3923c-47b0-4345-bfad-274b91e86a4f" />
+
+
 ## Quick Start
 
 ```bash
