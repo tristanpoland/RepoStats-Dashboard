@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GitHub Archive Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        gh: {
+          bg:      '#0d1117',
+          surface: '#161b22',
+          border:  '#30363d',
+          text:    '#c9d1d9',
+          muted:   '#8b949e',
+          blue:    '#58a6ff',
+          green:   '#3fb950',
+          red:     '#f85149',
+          yellow:  '#d29922',
+          purple:  '#bc8cff',
+          orange:  '#e3b341',
+        }
+      },
+      fontFamily: {
+        mono: ['JetBrains Mono', 'monospace'],
+        sans: ['Inter', 'sans-serif'],
+      }
+    }
+  }
+}
+</script>
+<style>
+  * { box-sizing: border-box; }
+  body { background: #0d1117; color: #c9d1d9; font-family: 'Inter', sans-serif; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #161b22; }
+  ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+
+  .card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    transition: border-color 0.15s ease;
+  }
+  .card:hover { border-color: #484f58; }
+
+  .kpi-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    transition: all 0.15s ease;
+  }
+  .kpi-card:hover { border-color: #58a6ff; transform: translateY(-1px); }
+
+  .tab-btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #8b949e;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s ease;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .tab-btn:hover { color: #c9d1d9; }
+  .tab-btn.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 8px;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .badge-green  { background: rgba(63,185,80,0.15);  color: #3fb950; border: 1px solid rgba(63,185,80,0.3); }
+  .badge-red    { background: rgba(248,81,73,0.15);  color: #f85149; border: 1px solid rgba(248,81,73,0.3); }
+  .badge-blue   { background: rgba(88,166,255,0.15); color: #58a6ff; border: 1px solid rgba(88,166,255,0.3); }
+  .badge-purple { background: rgba(188,140,255,0.15);color: #bc8cff; border: 1px solid rgba(188,140,255,0.3); }
+  .badge-yellow { background: rgba(210,153,34,0.15); color: #d29922; border: 1px solid rgba(210,153,34,0.3); }
+  .badge-gray   { background: rgba(139,148,158,0.15);color: #8b949e; border: 1px solid rgba(139,148,158,0.3); }
+
+  .stat-bar-track { background: #21262d; border-radius: 4px; height: 6px; overflow: hidden; }
+  .stat-bar-fill  { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+
+  .repo-row { transition: background 0.1s ease; }
+  .repo-row:hover { background: #1c2128; }
+
+  .sidebar-link {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.375rem 0.75rem; border-radius: 6px;
+    font-size: 0.8125rem; color: #8b949e;
+    cursor: pointer; transition: all 0.15s ease;
+    text-decoration: none;
+  }
+  .sidebar-link:hover { background: #1c2128; color: #c9d1d9; }
+  .sidebar-link.active { background: #1c2128; color: #58a6ff; }
+
+  .mini-sparkline { display: inline-flex; align-items: flex-end; gap: 1px; height: 20px; }
+  .mini-sparkline span {
+    display: inline-block; width: 3px; border-radius: 1px;
+    background: #3fb950; transition: height 0.3s ease;
+  }
+
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .fade-in { animation: fadeIn 0.3s ease forwards; }
+
+  @keyframes pulse-dot { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+  .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+
+  .trend-up   { color: #f85149; }
+  .trend-down { color: #3fb950; }
+  .trend-flat { color: #8b949e; }
+
+  table { border-collapse: collapse; width: 100%; }
+  th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;
+       color: #8b949e; font-weight: 600; padding: 0.5rem 0.75rem;
+       border-bottom: 1px solid #30363d; text-align: left; }
+  td { font-size: 0.8125rem; padding: 0.5rem 0.75rem;
+       border-bottom: 1px solid #21262d; }
+  tr:last-child td { border-bottom: none; }
+
+  select, input {
+    background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+    border-radius: 6px; padding: 0.375rem 0.625rem; font-size: 0.8125rem;
+    outline: none; transition: border-color 0.15s;
+  }
+  select:focus, input:focus { border-color: #58a6ff; }
+
+  #loading-overlay {
+    position: fixed; inset: 0; background: #0d1117;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; transition: opacity 0.4s ease;
+  }
+</style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div id="loading-overlay">
+  <div class="text-center">
+    <div class="text-4xl mb-4">⬡</div>
+    <div class="text-gh-muted text-sm font-mono">Loading archive…</div>
+  </div>
+</div>
+
+<!-- App shell -->
+<div id="app" class="flex h-screen overflow-hidden" style="display:none!important">
+
+  <!-- Sidebar -->
+  <aside class="w-56 flex-shrink-0 flex flex-col border-r border-gh-border bg-gh-surface overflow-y-auto">
+    <div class="px-4 py-4 border-b border-gh-border">
+      <div class="flex items-center gap-2">
+        <span class="text-xl">⬡</span>
+        <div>
+          <div class="font-semibold text-sm text-white">GH Archive</div>
+          <div class="text-xs text-gh-muted font-mono" id="sidebar-snapshot-count">— snapshots</div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="flex-1 px-2 py-3 space-y-0.5">
+      <div class="text-xs font-semibold text-gh-muted uppercase tracking-wider px-3 py-2">Views</div>
+      <a class="sidebar-link active" data-view="overview" onclick="showView('overview')">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5zm8 0A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5zm-8 8A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5zm8 0A1.5 1.5 0 0 1 10.5 9h3A1.5 1.5 0 0 1 15 10.5v3A1.5 1.5 0 0 1 13.5 15h-3A1.5 1.5 0 0 1 9 13.5z"/></svg>
+        Overview
+      </a>
+      <a class="sidebar-link" data-view="repos" onclick="showView('repos')">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8z"/></svg>
+        Repositories
+      </a>
+      <a class="sidebar-link" data-view="activity" onclick="showView('activity')">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M1.75 1h8.5c.966 0 1.75.784 1.75 1.75v5.5A1.75 1.75 0 0 1 10.25 10H7.061l-2.574 2.561A1.75 1.75 0 0 1 1.5 11.25V2.75C1.5 1.784 2.284 1 3.25 1h-1.5zM1.5 2.75v8.5c0 .414.336.75.75.75.193 0 .378-.073.516-.206L5.34 9.23a.75.75 0 0 1 .523-.23h4.387a.25.25 0 0 0 .25-.25v-5.5a.25.25 0 0 0-.25-.25h-8.5a.25.25 0 0 0-.25.25z"/></svg>
+        Activity
+      </a>
+      <a class="sidebar-link" data-view="backlog" onclick="showView('backlog')">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M8 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0zM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0z"/></svg>
+        Backlog Health
+      </a>
+      <a class="sidebar-link" data-view="commits" onclick="showView('commits')">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M11.93 8.5a4.002 4.002 0 0 1-7.86 0H.75a.75.75 0 0 1 0-1.5h3.32a4.002 4.002 0 0 1 7.86 0h3.32a.75.75 0 0 1 0 1.5zm-1.43-.75a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0z"/></svg>
+        Commits
+      </a>
+      <a class="sidebar-link" data-view="contributors" onclick="showView('contributors')">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M2 5.5a3.5 3.5 0 1 1 5.898 2.549 5.508 5.508 0 0 1 3.034 4.084.75.75 0 1 1-1.482.235 4 4 0 0 0-7.9 0 .75.75 0 0 1-1.482-.236A5.507 5.507 0 0 1 3.102 8.05 3.493 3.493 0 0 1 2 5.5zM11 4a.75.75 0 1 0 0 1.5 1.5 1.5 0 0 1 .666 2.844.75.75 0 0 0-.416.672v.352a.75.75 0 0 0 1.41.364 3 3 0 0 0-.66-5.676A.75.75 0 0 0 11 4zm1.22 8.132a.75.75 0 1 0-1.19.912c.353.46.574.99.645 1.54a.75.75 0 0 0 1.486-.196 4.338 4.338 0 0 0-.94-2.256zM5.5 2.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>
+        Contributors
+      </a>
+      <a class="sidebar-link" data-view="pulls" onclick="showView('pulls')">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354zM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0z"/></svg>
+        Pull Requests
+      </a>
+      <a class="sidebar-link" data-view="momentum" onclick="showView('momentum')">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M15.22 4.97a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L7.5 7.867 3.78 11.59a.75.75 0 0 1-1.06-1.06l4.25-4.25a.75.75 0 0 1 1.06 0l2.41 2.409 3.72-3.72a.75.75 0 0 1 1.06 0z"/></svg>
+        Momentum
+      </a>
+      <a class="sidebar-link" data-view="groups" onclick="showView('groups')">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h2.764c.958 0 1.76.56 2.311 1.184C7.985 3.648 8.48 4 9 4h4.5A1.5 1.5 0 0 1 15 5.5v7a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5z"/></svg>
+        Groups
+      </a>
+
+      <div class="text-xs font-semibold text-gh-muted uppercase tracking-wider px-3 py-2 mt-4">System</div>
+      <a class="sidebar-link" data-view="imports" onclick="showView('imports')">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14zM7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97z"/></svg>
+        Imported Files
+      </a>
+    </nav>
+
+    <div class="px-4 py-3 border-t border-gh-border">
+      <div class="text-xs text-gh-muted">
+        <div class="font-mono" id="sidebar-latest-ts">—</div>
+        <div>Latest snapshot</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="flex-1 overflow-y-auto">
+
+    <!-- Top bar -->
+    <header class="sticky top-0 z-10 flex items-center justify-between px-6 py-3 border-b border-gh-border bg-gh-surface/80 backdrop-blur">
+      <div class="flex items-center gap-4">
+        <h1 class="text-sm font-semibold text-white" id="view-title">Overview</h1>
+        <div class="flex items-center gap-1.5">
+          <span class="pulse-dot inline-block w-1.5 h-1.5 rounded-full bg-gh-green"></span>
+          <span class="text-xs text-gh-muted font-mono" id="header-ts">—</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <label class="text-xs text-gh-muted">Snapshot</label>
+        <select id="snapshot-select" onchange="onSnapshotChange(this.value)" class="text-xs">
+          <option value="">Latest</option>
+        </select>
+        <input id="search-input" type="text" placeholder="Filter repos…" class="text-xs w-36" oninput="onSearchInput(this.value)" />
+      </div>
+    </header>
+
+    <!-- Views -->
+    <div class="p-6 space-y-6">
+
+      <!-- OVERVIEW -->
+      <section id="view-overview" class="fade-in space-y-6">
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3" id="kpi-grid"></div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="card p-4">
+            <div class="text-xs font-semibold text-gh-muted uppercase tracking-wider mb-3">Groups at a Glance</div>
+            <div id="group-cards" class="space-y-3"></div>
+          </div>
+          <div class="card p-4">
+            <div class="text-xs font-semibold text-gh-muted uppercase tracking-wider mb-3">Commit Activity (12 weeks · all repos)</div>
+            <canvas id="overview-commits-chart" height="160"></canvas>
+          </div>
+        </div>
+        <div class="card p-4">
+          <div class="text-xs font-semibold text-gh-muted uppercase tracking-wider mb-3">Snapshot History</div>
+          <canvas id="snapshot-history-chart" height="120"></canvas>
+        </div>
+      </section>
+
+      <!-- REPOS -->
+      <section id="view-repos" class="fade-in hidden space-y-4">
+        <div class="card overflow-hidden">
+          <div class="px-4 py-3 border-b border-gh-border flex items-center justify-between">
+            <span class="text-sm font-semibold text-white">Repositories</span>
+            <span class="text-xs text-gh-muted" id="repo-count-label"></span>
+          </div>
+          <div class="overflow-x-auto">
+            <table>
+              <thead><tr>
+                <th>Repository</th><th>Group</th><th>Stars</th><th>Forks</th>
+                <th>Watchers</th><th>Open Issues</th><th>Branch</th><th>Pushed</th>
+              </tr></thead>
+              <tbody id="repos-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ACTIVITY -->
+      <section id="view-activity" class="fade-in hidden space-y-4">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3" id="activity-kpis"></div>
+        <div class="card p-4">
+          <div class="text-xs font-semibold text-gh-muted uppercase tracking-wider mb-3">Issues & PRs Opened vs Closed (28-day window)</div>
+          <canvas id="activity-bar-chart" height="200"></canvas>
+        </div>
+        <div class="card overflow-hidden">
+          <div class="px-4 py-3 border-b border-gh-border">
+            <span class="text-sm font-semibold text-white">Activity by Repo</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table>
+              <thead><tr>
+                <th>Repo</th><th>Issues Opened</th><th>Issues Closed</th>
+                <th>PRs Opened</th><th>PRs Closed</th><th>Net Δ</th><th>Updated</th>
+              </tr></thead>
+              <tbody id="activity-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- BACKLOG -->
+      <section id="view-backlog" class="fade-in hidden space-y-4">
+        <div class="card p-4">
+          <div class="text-xs font-semibold text-gh-muted uppercase tracking-wider mb-3">Age Distribution (all repos)</div>
+          <canvas id="backlog-donut-chart" height="200"></canvas>
+        </div>
+        <div class="card overflow-hidden">
+          <div class="px-4 py-3 border-b border-gh-border">
+            <span class="text-sm font-semibold text-white">Backlog Health by Repo</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table>
+              <thead><tr>
+                <th>Repo</th><th>Open</th><th>&lt;7d</th><th>7–30d</th>
+                <th>30–90d</th><th>&gt;90d</th><th>Median Age</th><th>Age Distribution</th>
+              </tr></thead>
+              <tbody id="backlog-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- COMMITS -->
+      <section id="view-commits" class="fade-in hidden space-y-4">
+        <div class="card p-4">
+          <div class="text-xs font-semibold text-gh-muted uppercase tracking-wider mb-3">Weekly Commits — All Repos Aggregated</div>
+          <canvas id="commits-line-chart" height="200"></canvas>
+        </div>
+        <div class="card p-4">
+          <div class="text-xs font-semibold text-gh-muted uppercase tracking-wider mb-3">Top Repos by Commit Volume</div>
+          <canvas id="commits-bar-chart" height="200"></canvas>
+        </div>
+      </section>
+
+      <!-- CONTRIBUTORS -->
+      <section id="view-contributors" class="fade-in hidden space-y-4">
+        <div class="card p-4">
+          <div class="text-xs font-semibold text-gh-muted uppercase tracking-wider mb-3">Top Contributors</div>
+          <canvas id="contrib-bar-chart" height="220"></canvas>
+        </div>
+        <div class="card overflow-hidden">
+          <div class="px-4 py-3 border-b border-gh-border">
+            <span class="text-sm font-semibold text-white">Contributor Details</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table>
+              <thead><tr>
+                <th>Login</th><th>Repo</th><th>Contributions</th><th>Share</th><th>Bar</th>
+              </tr></thead>
+              <tbody id="contrib-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- PULL REQUESTS -->
+      <section id="view-pulls" class="fade-in hidden space-y-4">
+        <div class="grid grid-cols-3 gap-3" id="pull-kpis"></div>
+        <div class="card overflow-hidden">
+          <div class="px-4 py-3 border-b border-gh-border">
+            <span class="text-sm font-semibold text-white">Pull Requests</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table>
+              <thead><tr>
+                <th>#</th><th>Title</th><th>Repo</th><th>Author</th><th>State</th><th>Updated</th>
+              </tr></thead>
+              <tbody id="pulls-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- MOMENTUM -->
+      <section id="view-momentum" class="fade-in hidden space-y-4">
+        <div class="card p-4">
+          <div class="text-xs font-semibold text-gh-muted uppercase tracking-wider mb-3">Net Issue Delta by Repo (positive = more opened than closed)</div>
+          <canvas id="momentum-chart" height="240"></canvas>
+        </div>
+        <div class="card overflow-hidden">
+          <div class="px-4 py-3 border-b border-gh-border">
+            <span class="text-sm font-semibold text-white">Momentum Table</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table>
+              <thead><tr>
+                <th>Repo</th><th>Group</th><th>Stars</th><th>Issues Opened</th>
+                <th>Issues Closed</th><th>Net Δ</th><th>PRs Opened</th><th>Open Issues</th><th>Median Age</th>
+              </tr></thead>
+              <tbody id="momentum-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- GROUPS -->
+      <section id="view-groups" class="fade-in hidden space-y-4">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4" id="group-detail-cards"></div>
+        <div class="card p-4">
+          <div class="text-xs font-semibold text-gh-muted uppercase tracking-wider mb-3">Stars by Group</div>
+          <canvas id="groups-stars-chart" height="160"></canvas>
+        </div>
+      </section>
+
+      <!-- IMPORTS -->
+      <section id="view-imports" class="fade-in hidden space-y-4">
+        <div class="card overflow-hidden">
+          <div class="px-4 py-3 border-b border-gh-border">
+            <span class="text-sm font-semibold text-white">Imported SQL Files</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table>
+              <thead><tr>
+                <th>Filename</th><th>SHA-256</th><th>Imported At</th>
+              </tr></thead>
+              <tbody id="imports-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+const state = {
+  view: 'overview',
+  snapshot: '',
+  search: '',
+  snapshots: [],
+  charts: {},
+};
+
+const VIEW_TITLES = {
+  overview: 'Overview', repos: 'Repositories', activity: 'Activity (28-day)',
+  backlog: 'Backlog Health', commits: 'Commit History', contributors: 'Contributors',
+  pulls: 'Pull Requests', momentum: 'Momentum', groups: 'Groups', imports: 'Imported Files',
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function api(path) {
+  const url = state.snapshot ? `${path}${path.includes('?')?'&':'?'}snapshot_ts=${encodeURIComponent(state.snapshot)}` : path;
+  const r = await fetch(url);
+  return r.json();
+}
+
+function fmt(n) { return Number(n||0).toLocaleString(); }
+function fmtDate(s) {
+  if (!s) return '—';
+  try { return new Date(s).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}); }
+  catch(e) { return s.slice(0,10); }
+}
+function fmtTs(s) {
+  if (!s) return '—';
+  try { return new Date(s).toLocaleString('en-US', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }
+  catch(e) { return s.slice(0,16); }
+}
+function shortRepo(r) { return r.split('/')[1] || r; }
+
+function destroyChart(key) {
+  if (state.charts[key]) { state.charts[key].destroy(); delete state.charts[key]; }
+}
+
+function gh_chart_defaults() {
+  return {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color:'#21262d' }, ticks: { color:'#8b949e', font:{size:10} } },
+      y: { grid: { color:'#21262d' }, ticks: { color:'#8b949e', font:{size:10} } },
+    }
+  };
+}
+
+function stateBadge(state_str) {
+  const s = (state_str||'').toLowerCase();
+  if (s==='open')   return '<span class="badge badge-green">open</span>';
+  if (s==='merged') return '<span class="badge badge-purple">merged</span>';
+  if (s==='closed') return '<span class="badge badge-red">closed</span>';
+  return `<span class="badge badge-gray">${s||'—'}</span>`;
+}
+
+function netBadge(n) {
+  if (n>0) return `<span class="badge badge-red">+${n}</span>`;
+  if (n<0) return `<span class="badge badge-green">${n}</span>`;
+  return `<span class="badge badge-gray">0</span>`;
+}
+
+function groupBadge(g) {
+  const cls = {CF:'badge-blue',BOSH:'badge-yellow',Services:'badge-purple'}[g]||'badge-gray';
+  return `<span class="badge ${cls}">${g}</span>`;
+}
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+
+async function boot() {
+  // Populate snapshot selector
+  const snaps = await fetch('/api/snapshots').then(r=>r.json());
+  state.snapshots = snaps;
+  const sel = document.getElementById('snapshot-select');
+  snaps.forEach((s,i) => {
+    const o = document.createElement('option');
+    o.value = s.snapshot_ts;
+    o.textContent = fmtTs(s.snapshot_ts) + ` (${s.repo_count} repos)`;
+    if (i===0) o.textContent += ' ← latest';
+    sel.appendChild(o);
+  });
+
+  // Sidebar counts
+  const ov = await fetch('/api/overview').then(r=>r.json());
+  document.getElementById('sidebar-snapshot-count').textContent = `${ov.total_snapshots} snapshots`;
+  document.getElementById('sidebar-latest-ts').textContent = fmtTs(ov.latest_snapshot);
+  document.getElementById('header-ts').textContent = fmtTs(ov.latest_snapshot);
+
+  // Hide loading
+  document.getElementById('loading-overlay').style.opacity = '0';
+  setTimeout(() => document.getElementById('loading-overlay').style.display='none', 400);
+  const app = document.getElementById('app');
+  app.style.removeProperty('display');
+
+  showView('overview');
+}
+
+// ── View routing ──────────────────────────────────────────────────────────────
+
+function showView(v) {
+  state.view = v;
+  document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden'));
+  document.getElementById(`view-${v}`).classList.remove('hidden');
+  document.querySelectorAll('.sidebar-link').forEach(a => {
+    a.classList.toggle('active', a.dataset.view === v);
+  });
+  document.getElementById('view-title').textContent = VIEW_TITLES[v] || v;
+  loadView(v);
+}
+
+function onSnapshotChange(ts) {
+  state.snapshot = ts;
+  const snap = state.snapshots.find(s=>s.snapshot_ts===ts)||state.snapshots[0];
+  if (snap) document.getElementById('header-ts').textContent = fmtTs(snap.snapshot_ts);
+  loadView(state.view);
+}
+
+function onSearchInput(v) {
+  state.search = v.toLowerCase();
+  loadView(state.view);
+}
+
+function loadView(v) {
+  ({
+    overview: loadOverview, repos: loadRepos, activity: loadActivity,
+    backlog: loadBacklog, commits: loadCommits, contributors: loadContributors,
+    pulls: loadPulls, momentum: loadMomentum, groups: loadGroups, imports: loadImports,
+  }[v] || (()=>{}))();
+}
+
+// ── OVERVIEW ──────────────────────────────────────────────────────────────────
+
+async function loadOverview() {
+  const [ov, groups, commits, snaps] = await Promise.all([
+    fetch('/api/overview').then(r=>r.json()),
+    api('/api/groups'),
+    api('/api/commits/weekly'),
+    fetch('/api/snapshots').then(r=>r.json()),
+  ]);
+
+  // KPIs
+  const kpis = [
+    { label:'Total Repos', value:fmt(ov.total_repos), color:'text-gh-blue' },
+    { label:'Snapshots', value:fmt(ov.total_snapshots), color:'text-gh-purple' },
+    { label:'Total Stars', value:fmt(ov.total_stars), color:'text-gh-yellow' },
+    { label:'Total Forks', value:fmt(ov.total_forks), color:'text-gh-muted' },
+    { label:'SQL Files', value:fmt(ov.imported_files), color:'text-gh-green' },
+    { label:'Groups', value:fmt(ov.groups.length), color:'text-gh-orange' },
+  ];
+  document.getElementById('kpi-grid').innerHTML = kpis.map(k=>`
+    <div class="kpi-card">
+      <div class="text-xs text-gh-muted mb-1">${k.label}</div>
+      <div class="text-2xl font-bold font-mono ${k.color}">${k.value}</div>
+    </div>`).join('');
+
+  // Group cards
+  document.getElementById('group-cards').innerHTML = groups.map(g=>`
+    <div class="flex items-center justify-between p-3 rounded-lg bg-gh-bg border border-gh-border">
+      <div>
+        ${groupBadge(g.group)}
+        <span class="ml-2 text-sm text-gh-text">${g.repo_count} repos</span>
+      </div>
+      <div class="flex items-center gap-4 text-xs text-gh-muted font-mono">
+        <span class="text-gh-yellow">★ ${fmt(g.total_stars)}</span>
+        <span class="text-gh-blue">⬆ ${fmt(g.total_issues_opened)}</span>
+        <span class="text-gh-red">Issues: ${fmt(g.total_open_issues)}</span>
+      </div>
+    </div>`).join('');
+
+  // Commits chart
+  destroyChart('ov-commits');
+  const ctx = document.getElementById('overview-commits-chart').getContext('2d');
+  const sorted = [...commits].sort((a,b)=>a.week_offset-b.week_offset);
+  state.charts['ov-commits'] = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: sorted.map(r=>r.week_label),
+      datasets:[{
+        data: sorted.map(r=>r.commits),
+        borderColor:'#3fb950', backgroundColor:'rgba(63,185,80,0.1)',
+        tension:0.4, fill:true, pointRadius:3, pointBackgroundColor:'#3fb950',
+      }]
+    },
+    options:{ ...gh_chart_defaults(), plugins:{legend:{display:false}} }
+  });
+
+  // Snapshot history chart
+  destroyChart('ov-snaps');
+  const ctx2 = document.getElementById('snapshot-history-chart').getContext('2d');
+  const snapSorted = [...snaps].reverse();
+  state.charts['ov-snaps'] = new Chart(ctx2, {
+    type:'bar',
+    data:{
+      labels: snapSorted.map(s=>fmtTs(s.snapshot_ts)),
+      datasets:[
+        { label:'Repos', data:snapSorted.map(s=>s.repo_count), backgroundColor:'rgba(88,166,255,0.6)' },
+        { label:'Open Issues', data:snapSorted.map(s=>s.total_open_issues), backgroundColor:'rgba(248,81,73,0.5)' },
+      ]
+    },
+    options:{ ...gh_chart_defaults(),
+      plugins:{ legend:{ display:true, labels:{ color:'#8b949e', font:{size:11} } } },
+      scales:{
+        x:{ grid:{color:'#21262d'}, ticks:{color:'#8b949e',font:{size:9},maxRotation:45} },
+        y:{ grid:{color:'#21262d'}, ticks:{color:'#8b949e',font:{size:10}} },
+      }
+    }
+  });
+}
+
+// ── REPOS ─────────────────────────────────────────────────────────────────────
+
+async function loadRepos() {
+  const repos = await api('/api/repos');
+  const filtered = repos.filter(r => !state.search || r.repo.includes(state.search));
+  document.getElementById('repo-count-label').textContent = `${filtered.length} of ${repos.length} repos`;
+  document.getElementById('repos-tbody').innerHTML = filtered.map(r=>`
+    <tr class="repo-row cursor-pointer" onclick="drillRepo('${r.repo}')">
+      <td class="font-mono text-gh-blue hover:underline">${r.repo}</td>
+      <td>${groupBadge(r.repo_group)}</td>
+      <td class="font-mono text-gh-yellow">★ ${fmt(r.stars)}</td>
+      <td class="font-mono text-gh-muted">${fmt(r.forks)}</td>
+      <td class="font-mono text-gh-muted">${fmt(r.watchers)}</td>
+      <td class="font-mono">${fmt(r.open_issues_api)}</td>
+      <td class="font-mono text-xs text-gh-muted">${r.default_branch||'—'}</td>
+      <td class="text-xs text-gh-muted">${fmtDate(r.pushed_at)}</td>
+    </tr>`).join('');
+}
+
+// ── ACTIVITY ──────────────────────────────────────────────────────────────────
+
+async function loadActivity() {
+  const rows = await api('/api/activity');
+  const filtered = rows.filter(r => !state.search || r.repo.includes(state.search));
+
+  const totals = filtered.reduce((a,r)=>({
+    io: a.io+r.issues_opened, ic: a.ic+r.issues_closed,
+    po: a.po+r.prs_opened,    pc: a.pc+r.prs_closed,
+  }), {io:0,ic:0,po:0,pc:0});
+
+  document.getElementById('activity-kpis').innerHTML = [
+    { label:'Issues Opened', v:totals.io, color:'text-gh-yellow' },
+    { label:'Issues Closed', v:totals.ic, color:'text-gh-purple' },
+    { label:'PRs Opened',    v:totals.po, color:'text-gh-blue' },
+    { label:'PRs Closed',    v:totals.pc, color:'text-gh-green' },
+  ].map(k=>`<div class="kpi-card"><div class="text-xs text-gh-muted mb-1">${k.label}</div>
+    <div class="text-2xl font-bold font-mono ${k.color}">${fmt(k.v)}</div></div>`).join('');
+
+  // Bar chart - top 15 by activity
+  destroyChart('act-bar');
+  const top15 = filtered.slice(0,15);
+  const ctx = document.getElementById('activity-bar-chart').getContext('2d');
+  state.charts['act-bar'] = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: top15.map(r=>shortRepo(r.repo)),
+      datasets:[
+        { label:'Issues Opened', data:top15.map(r=>r.issues_opened), backgroundColor:'rgba(210,153,34,0.7)' },
+        { label:'Issues Closed', data:top15.map(r=>r.issues_closed), backgroundColor:'rgba(188,140,255,0.7)' },
+        { label:'PRs Opened',    data:top15.map(r=>r.prs_opened),    backgroundColor:'rgba(88,166,255,0.7)' },
+        { label:'PRs Closed',    data:top15.map(r=>r.prs_closed),    backgroundColor:'rgba(63,185,80,0.7)' },
+      ]
+    },
+    options:{ ...gh_chart_defaults(),
+      plugins:{ legend:{ display:true, labels:{color:'#8b949e',font:{size:10}} } },
+      scales:{
+        x:{ stacked:false, grid:{color:'#21262d'}, ticks:{color:'#8b949e',font:{size:9},maxRotation:45} },
+        y:{ stacked:false, grid:{color:'#21262d'}, ticks:{color:'#8b949e',font:{size:10}} },
+      }
+    }
+  });
+
+  document.getElementById('activity-tbody').innerHTML = filtered.map(r=>`
+    <tr class="repo-row">
+      <td class="font-mono text-gh-blue text-xs">${r.repo}</td>
+      <td class="font-mono text-gh-yellow">${r.issues_opened}</td>
+      <td class="font-mono text-gh-purple">${r.issues_closed}</td>
+      <td class="font-mono text-gh-blue">${r.prs_opened}</td>
+      <td class="font-mono text-gh-green">${r.prs_closed}</td>
+      <td>${netBadge(r.net_issues_delta)}</td>
+      <td class="font-mono text-gh-muted">${r.items_updated}</td>
+    </tr>`).join('');
+}
+
+// ── BACKLOG ───────────────────────────────────────────────────────────────────
+
+async function loadBacklog() {
+  const rows = await api('/api/backlog');
+  const filtered = rows.filter(r => !state.search || r.repo.includes(state.search));
+
+  // Aggregate for donut
+  const totals = filtered.reduce((a,r)=>({
+    lt7: a.lt7+r.age_lt7d, d30: a.d30+r.age_7_30d,
+    d90: a.d90+r.age_30_90d, old: a.old+r.age_gt90d,
+  }), {lt7:0,d30:0,d90:0,old:0});
+
+  destroyChart('bl-donut');
+  const ctx = document.getElementById('backlog-donut-chart').getContext('2d');
+  state.charts['bl-donut'] = new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels:['< 7 days','7–30 days','30–90 days','> 90 days'],
+      datasets:[{
+        data:[totals.lt7,totals.d30,totals.d90,totals.old],
+        backgroundColor:['#3fb950','#d29922','#e3b341','#f85149'],
+        borderColor:'#161b22', borderWidth:3,
+      }]
+    },
+    options:{
+      responsive:true, cutout:'65%',
+      plugins:{ legend:{ position:'right', labels:{color:'#8b949e',font:{size:11}} } }
+    }
+  });
+
+  document.getElementById('backlog-tbody').innerHTML = filtered.map(r=>{
+    const total = r.open_issues || 1;
+    const bar = (val, color) => `<span style="display:inline-block;width:${Math.round(val/total*60)}px;height:6px;background:${color};border-radius:2px;margin-right:1px"></span>`;
+    return `<tr class="repo-row">
+      <td class="font-mono text-gh-blue text-xs">${r.repo}</td>
+      <td class="font-mono text-gh-blue">${r.open_issues}</td>
+      <td class="font-mono text-gh-green">${r.age_lt7d}</td>
+      <td class="font-mono text-gh-yellow">${r.age_7_30d}</td>
+      <td class="font-mono" style="color:#e3b341">${r.age_30_90d}</td>
+      <td class="font-mono text-gh-red">${r.age_gt90d}</td>
+      <td class="font-mono text-gh-muted">${r.median_age_days.toFixed(1)}d</td>
+      <td>${bar(r.age_lt7d,'#3fb950')}${bar(r.age_7_30d,'#d29922')}${bar(r.age_30_90d,'#e3b341')}${bar(r.age_gt90d,'#f85149')}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── COMMITS ───────────────────────────────────────────────────────────────────
+
+async function loadCommits() {
+  const [agg, repos] = await Promise.all([
+    api('/api/commits/weekly'),
+    api('/api/repos'),
+  ]);
+
+  // Aggregated line chart
+  destroyChart('cm-line');
+  const sorted = [...agg].sort((a,b)=>a.week_offset-b.week_offset);
+  const ctx = document.getElementById('commits-line-chart').getContext('2d');
+  state.charts['cm-line'] = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: sorted.map(r=>r.week_label),
+      datasets:[{
+        label:'Total Commits',
+        data: sorted.map(r=>r.commits),
+        borderColor:'#3fb950', backgroundColor:'rgba(63,185,80,0.1)',
+        tension:0.4, fill:true, pointRadius:4, pointBackgroundColor:'#3fb950',
+      }]
+    },
+    options:{ ...gh_chart_defaults(), plugins:{legend:{display:false}} }
+  });
+
+  // Top repos by star (proxy for activity interest)
+  destroyChart('cm-bar');
+  const top = repos.filter(r=>!state.search||r.repo.includes(state.search)).slice(0,20);
+  const ctx2 = document.getElementById('commits-bar-chart').getContext('2d');
+  state.charts['cm-bar'] = new Chart(ctx2, {
+    type:'bar',
+    data:{
+      labels: top.map(r=>shortRepo(r.repo)),
+      datasets:[{ label:'Stars (proxy)', data:top.map(r=>r.stars),
+        backgroundColor:'rgba(88,166,255,0.6)', borderRadius:3 }]
+    },
+    options:{ ...gh_chart_defaults(),
+      scales:{
+        x:{ grid:{color:'#21262d'}, ticks:{color:'#8b949e',font:{size:9},maxRotation:45} },
+        y:{ grid:{color:'#21262d'}, ticks:{color:'#8b949e',font:{size:10}} },
+      }
+    }
+  });
+}
+
+// ── CONTRIBUTORS ──────────────────────────────────────────────────────────────
+
+async function loadContributors() {
+  const rows = await api('/api/contributors?limit=30');
+  const filtered = rows.filter(r=>!state.search||r.repo.includes(state.search)||r.login.includes(state.search));
+
+  destroyChart('con-bar');
+  const top20 = filtered.slice(0,20);
+  const ctx = document.getElementById('contrib-bar-chart').getContext('2d');
+  state.charts['con-bar'] = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: top20.map(r=>`${r.login} (${shortRepo(r.repo)})`),
+      datasets:[{ data:top20.map(r=>r.contributions),
+        backgroundColor: top20.map((_,i)=>`hsl(${120+i*15},60%,45%)`),
+        borderRadius:3
+      }]
+    },
+    options:{ ...gh_chart_defaults(),
+      scales:{
+        x:{ grid:{color:'#21262d'}, ticks:{color:'#8b949e',font:{size:9},maxRotation:55} },
+        y:{ grid:{color:'#21262d'}, ticks:{color:'#8b949e',font:{size:10}} },
+      }
+    }
+  });
+
+  document.getElementById('contrib-tbody').innerHTML = filtered.map(r=>{
+    const barW = Math.round(r.share_pct * 1.2);
+    return `<tr class="repo-row">
+      <td class="font-mono text-gh-blue">${r.login}</td>
+      <td class="font-mono text-xs text-gh-muted">${r.repo}</td>
+      <td class="font-mono text-gh-yellow">${fmt(r.contributions)}</td>
+      <td class="font-mono text-gh-muted">${r.share_pct.toFixed(1)}%</td>
+      <td><div class="stat-bar-track" style="width:120px"><div class="stat-bar-fill bg-gh-green" style="width:${barW}px"></div></div></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── PULL REQUESTS ─────────────────────────────────────────────────────────────
+
+async function loadPulls() {
+  const rows = await api('/api/pulls?limit=50');
+  const filtered = rows.filter(r=>!state.search||r.repo.includes(state.search)||r.title.includes(state.search));
+
+  const byState = filtered.reduce((a,r)=>({ ...a, [r.state||'unknown']:(a[r.state||'unknown']||0)+1 }),{});
+  document.getElementById('pull-kpis').innerHTML = [
+    { label:'Open',   v:byState['open']||0,   color:'text-gh-green' },
+    { label:'Merged', v:byState['merged']||0, color:'text-gh-purple' },
+    { label:'Closed', v:byState['closed']||0, color:'text-gh-red' },
+  ].map(k=>`<div class="kpi-card"><div class="text-xs text-gh-muted mb-1">${k.label}</div>
+    <div class="text-2xl font-bold font-mono ${k.color}">${fmt(k.v)}</div></div>`).join('');
+
+  document.getElementById('pulls-tbody').innerHTML = filtered.map(r=>`
+    <tr class="repo-row">
+      <td class="font-mono text-gh-muted text-xs">#${r.number}</td>
+      <td class="text-xs max-w-xs truncate">${r.html_url
+        ? `<a href="${r.html_url}" target="_blank" class="text-gh-blue hover:underline">${r.title||'—'}</a>`
+        : (r.title||'—')}</td>
+      <td class="font-mono text-xs text-gh-muted">${shortRepo(r.repo)}</td>
+      <td class="font-mono text-xs text-gh-blue">${r.author||'—'}</td>
+      <td>${stateBadge(r.state)}</td>
+      <td class="text-xs text-gh-muted">${fmtDate(r.updated_at)}</td>
+    </tr>`).join('');
+}
+
+// ── MOMENTUM ──────────────────────────────────────────────────────────────────
+
+async function loadMomentum() {
+  const rows = await api('/api/momentum');
+  const filtered = rows.filter(r=>!state.search||r.repo.includes(state.search));
+
+  destroyChart('mom-chart');
+  const sorted = [...filtered].sort((a,b)=>a.net_delta-b.net_delta);
+  const ctx = document.getElementById('momentum-chart').getContext('2d');
+  state.charts['mom-chart'] = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: sorted.map(r=>shortRepo(r.repo)),
+      datasets:[{
+        label:'Net Issue Delta',
+        data: sorted.map(r=>r.net_delta),
+        backgroundColor: sorted.map(r=>r.net_delta>0?'rgba(248,81,73,0.7)':r.net_delta<0?'rgba(63,185,80,0.7)':'rgba(139,148,158,0.4)'),
+        borderRadius:3,
+      }]
+    },
+    options:{ ...gh_chart_defaults(),
+      plugins:{ legend:{display:false} },
+      scales:{
+        x:{ grid:{color:'#21262d'}, ticks:{color:'#8b949e',font:{size:8},maxRotation:55} },
+        y:{ grid:{color:'#21262d'}, ticks:{color:'#8b949e',font:{size:10}} },
+      }
+    }
+  });
+
+  document.getElementById('momentum-tbody').innerHTML = [...rows]
+    .filter(r=>!state.search||r.repo.includes(state.search))
+    .sort((a,b)=>a.net_delta-b.net_delta)
+    .map(r=>`<tr class="repo-row">
+      <td class="font-mono text-gh-blue text-xs">${r.repo}</td>
+      <td>${groupBadge(r.repo_group)}</td>
+      <td class="font-mono text-gh-yellow">★ ${fmt(r.stars)}</td>
+      <td class="font-mono text-gh-yellow">${r.issues_opened}</td>
+      <td class="font-mono text-gh-purple">${r.issues_closed}</td>
+      <td>${netBadge(r.net_delta)}</td>
+      <td class="font-mono text-gh-blue">${r.prs_opened}</td>
+      <td class="font-mono">${r.open_issues}</td>
+      <td class="font-mono text-gh-muted">${r.median_age.toFixed(1)}d</td>
+    </tr>`).join('');
+}
+
+// ── GROUPS ────────────────────────────────────────────────────────────────────
+
+async function loadGroups() {
+  const groups = await api('/api/groups');
+
+  const colors = { CF:'#58a6ff', BOSH:'#d29922', Services:'#bc8cff' };
+  document.getElementById('group-detail-cards').innerHTML = groups.map(g=>`
+    <div class="card p-5">
+      <div class="flex items-center gap-2 mb-4">
+        ${groupBadge(g.group)}
+        <span class="text-sm font-semibold text-white">${g.group}</span>
+      </div>
+      <div class="space-y-3">
+        ${[
+          ['Repos', fmt(g.repo_count), 'text-gh-text'],
+          ['Stars', '★ '+fmt(g.total_stars), 'text-gh-yellow'],
+          ['Forks', fmt(g.total_forks), 'text-gh-muted'],
+          ['Open Issues', fmt(g.total_open_issues), 'text-gh-red'],
+          ['Issues Opened', fmt(g.total_issues_opened), 'text-gh-blue'],
+          ['PRs Opened', fmt(g.total_prs_opened), 'text-gh-green'],
+          ['Avg Median Age', g.avg_median_age.toFixed(1)+'d', 'text-gh-muted'],
+        ].map(([l,v,c])=>`
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-gh-muted">${l}</span>
+            <span class="text-sm font-mono font-semibold ${c}">${v}</span>
+          </div>`).join('')}
+      </div>
+    </div>`).join('');
+
+  destroyChart('grp-stars');
+  const ctx = document.getElementById('groups-stars-chart').getContext('2d');
+  state.charts['grp-stars'] = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: groups.map(g=>g.group),
+      datasets:[
+        { label:'Stars',       data:groups.map(g=>g.total_stars),       backgroundColor:groups.map(g=>colors[g.group]||'#8b949e'), borderRadius:5 },
+        { label:'Open Issues', data:groups.map(g=>g.total_open_issues), backgroundColor:'rgba(248,81,73,0.5)', borderRadius:5 },
+        { label:'Forks',       data:groups.map(g=>g.total_forks),       backgroundColor:'rgba(188,140,255,0.5)', borderRadius:5 },
+      ]
+    },
+    options:{ ...gh_chart_defaults(),
+      plugins:{ legend:{ display:true, labels:{color:'#8b949e',font:{size:11}} } },
+    }
+  });
+}
+
+// ── IMPORTS ───────────────────────────────────────────────────────────────────
+
+async function loadImports() {
+  const rows = await fetch('/api/imported-files').then(r=>r.json());
+  document.getElementById('imports-tbody').innerHTML = rows.map(r=>`
+    <tr class="repo-row">
+      <td class="font-mono text-gh-green text-xs">${r.filename}</td>
+      <td class="font-mono text-gh-muted text-xs" style="word-break:break-all">${r.sha256}</td>
+      <td class="text-xs text-gh-muted">${fmtTs(r.imported_at)}</td>
+    </tr>`).join('');
+}
+
+// ── Drill-down (future) ───────────────────────────────────────────────────────
+
+function drillRepo(repo) {
+  // Could open a detail modal — for now just filter to that repo
+  document.getElementById('search-input').value = repo.split('/')[1];
+  state.search = repo.split('/')[1];
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
+boot().catch(err => {
+  document.getElementById('loading-overlay').innerHTML =
+    `<div class="text-center text-gh-red"><div class="text-2xl mb-2">✕</div><div class="font-mono text-sm">${err.message}</div></div>`;
+});
+</script>
+</body>
+</html>
